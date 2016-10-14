@@ -1,10 +1,21 @@
+leveldb: A key-value store
+Authors: Sanjay Ghemawat (sanjay@google.com) and Jeff Dean (jeff@google.com)
 
-libxv tcp网络库 吞吐量上比libevent快30%左右，事件处理libevent略优。具体测试参考libev bench手册
-=====
-xxxx
-------
- dada 
- 
+The code under this directory implements a system for maintaining a
+persistent key/value store.
+
+See doc/index.html for more explanation.
+See doc/impl.html for a brief overview of the implementation.
+
+The public interface is in include/*.h.  Callers should not include or
+rely on the details of any other header files in this package.  Those
+internal APIs may be changed without warning.
+
+Guide to header files:
+
+include/db.h
+Main interface to the DB: Start here
+    
 #include "xEventLoop.h"
 #include "xTcpconnection.h"
 #include "xTcpServer.h"
