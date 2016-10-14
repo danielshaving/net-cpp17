@@ -9,7 +9,7 @@ void onConnection(const xTcpconnectionPtr& conn,void *data)
 {
   if (conn->connected())
   {
-    printf("connect success\n");
+    //conn->setTcpNoDelay(true);
   }
 }
 
