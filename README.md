@@ -1,7 +1,7 @@
 
-libxv tcp网络库
+libxv tcp网络库 吞吐量上比libevent快30%左右，事件处理libevent略优。具体测试参考libev bench手册
 =====
-
+------
 #include "xEventLoop.h"
 #include "xTcpconnection.h"
 #include "xTcpServer.h"
