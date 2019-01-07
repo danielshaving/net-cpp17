@@ -6,11 +6,11 @@
 class TcpClient
 {
 public:
-	TcpClient(EventLoop *loop,const char *ip,int16_t port,const std::any &context);
+	TcpClient(EventLoop *loop, const char *ip,
+		int16_t port, const std::any &context);
 	~TcpClient();
 
-	bool syncConnect();
-	void asyncConnect();
+	void connect(bool s = false);
 	void disConnect();
 	void stop();
 
@@ -18,16 +18,35 @@ public:
 	void enableRetry() { retry = true; }
 	void closeRetry() { retry = false; }
 
-	void setConnectionErrorCallBack(const ConnectionErrorCallback &&cb) { connectionErrorCallBack = std::move(cb); }
-	void setConnectionCallback(const ConnectionCallback &&cb) { connectionCallback = std::move(cb); }
-	void setMessageCallback(const MessageCallback &&cb) { messageCallback = std::move(cb); }
-	void setWriteCompleteCallback(const WriteCompleteCallback &&cb) { writeCompleteCallback = std::move(cb); }
+	void setConnectionErrorCallBack(const ConnectionErrorCallback &&cb)
+	{
+		connectionErrorCallBack = std::move(cb);
+	}
+
+	void setConnectionCallback(const ConnectionCallback &&cb)
+	{
+		connectionCallback = std::move(cb);
+	}
+
+	void setMessageCallback(const MessageCallback &&cb)
+	{
+		messageCallback = std::move(cb);
+	}
+
+	void setWriteCompleteCallback(const WriteCompleteCallback &&cb)
+	{
+		writeCompleteCallback = std::move(cb);
+	}
 
 	EventLoop *getLoop() { return loop; }
 	std::any *getContext() { return &context; }
 	const std::any &getContext() const { return context; }
+
 	void setContext(const std::any &context) { this->context = context; }
-	TcpConnectionPtr getConnection() { return connection; }
+	const char *getIp() { return ip; }
+	int16_t getPort() { return port; }
+
+	TcpConnectionPtr getConnection();
 
 private:
 	TcpClient(const TcpClient&);
@@ -40,8 +59,7 @@ private:
 	ConnectorPtr connector;
 	EventLoop *loop;
 
-	int32_t nextConnId;
-	mutable std::mutex mutex;
+	std::mutex mutex;
 	ConnectionErrorCallback connectionErrorCallBack;
 	ConnectionCallback connectionCallback;
 	MessageCallback messageCallback;
@@ -49,6 +67,8 @@ private:
 
 	TcpConnectionPtr connection;
 	std::any context;
+	const char *ip;
+	int16_t port;
 	bool retry;
-	bool connect;
+	bool connecting;
 };

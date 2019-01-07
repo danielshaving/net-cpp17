@@ -1,16 +1,20 @@
 #pragma once
 #include "all.h"
-#include "buffer.h"
+#include "timerqueue.h"
+
+#ifdef _BOOST_FILE_LOCK
+#include <boost/interprocess/sync/file_lock.hpp>
+#endif
 
 const int32_t kSmallBuffer = 4000;
-const int32_t kLargeBuffer = 4000*10;
+const int32_t kLargeBuffer = 4000 * 1000;
 
 template<int32_t SIZE>
 class FixedBuffer
 {
 public:
 	FixedBuffer()
-	:cur(data)
+		:cur(data)
 	{
 
 	}
@@ -20,11 +24,11 @@ public:
 
 	}
 
-	void append(const char *buf,size_t len)
+	void append(const char *buf, size_t len)
 	{
-		if(avail() > len)
+		if (avail() > len)
 		{
-			memcpy(cur,buf,len);
+			memcpy(cur, buf, len);
 			cur += len;
 		}
 	}
@@ -34,13 +38,13 @@ public:
 	char *current() { return cur; }
 	void add(size_t len) { cur += len; }
 
-	void reset() { cur = data;}
-	void bzero() { ::bzero(data,sizeof data); }
+	void reset() { cur = data; }
+	void bzero() { memset(data, 0, sizeof data); }
 
-	std::string toString() const { return std::string(data,length()); }
-	int32_t avail() const { return static_cast<int32_t>(end() - cur); }
+	std::string toString() const { return std::string(data, length()); }
+	size_t avail() const { return static_cast<size_t>(end() - cur); }
 	const char *end() const { return data + sizeof data; }
-	StringPiece toStringPiece() const { return StringPiece(data,length()); }
+	std::string_view toStringView() const { return std::string_view(data, length()); }
 
 private:
 	FixedBuffer(const FixedBuffer&);
@@ -53,67 +57,73 @@ private:
 class AppendFile
 {
 public:
-	explicit AppendFile(std::string &filename);
+	explicit AppendFile(const std::string &filename);
 	~AppendFile();
-	void append(const char *logline,const size_t len);
+	
+	void append(const char *logline, const size_t len);
 	void flush();
-	void rename(const std::string &oldname,const std::string &rename);
+	
+	bool exists();
 	size_t getWrittenBytes() const { return writtenBytes; }
+	int32_t lockOrUnlock(int32_t fd, bool lock);
+	bool lockFile(const std::string &fname);
+	bool unlockFile();
 
 private:
 	AppendFile(const AppendFile&);
 	void operator=(const AppendFile&);
 
-	size_t write(const char *logline,size_t len);
+	size_t write(const char *logline, size_t len);
 	FILE *fp;
-	char buffer[64*1024];
+	char buffer[64 * 1024];
 	size_t writtenBytes;
+	int32_t fd;
+	const std::string filename;
+#ifdef _BOOST_FILE_LOCK
+	boost::interprocess::file_lock fileLock;
+#endif
 };
-
 
 class LogFile
 {
- public:
-	LogFile(const std::string &basename,
-	  size_t rollSize,
-	  bool threadSafe = true,
-	  int32_t interval = 3,
-	  int32_t checkEveryN = 1024);
+public:
+	LogFile(const std::string &filePath, const std::string &basename,
+		size_t rollSize,
+		bool threadSafe = true,
+		int32_t interval = 3,
+		int32_t checkEveryN = 1024);
 	~LogFile();
 
-	void append(const char *logline,int32_t len);
+	void append(const char *logline, int32_t len);
 	void flush();
 	bool rollFile();
 
 private:
-	LogFile(const LogFile&);
-	void operator=(const LogFile&);
-
-	void append_unlocked(const char *logline,int32_t len);
-	void getLogFileName(const std::string& basename,time_t *now);
+	void appendUnlocked(const char *logline, int32_t len);
+	void getLogFileName(time_t *now);
+	const std::string filePath;
 	const std::string basename;
 	const size_t rollSize;
 	const int32_t interval;
 	const int32_t checkEveryN;
 
 	std::string filename;
-	std::string filerename;
 	int32_t count;
 	std::mutex mutex;
 	time_t startOfPeriod;
 	time_t lastRoll;
 	time_t lastFlush;
 	std::unique_ptr<AppendFile> file;
-	const static int32_t kRollPerSeconds = 60*60*24;
+	const static int32_t kRollPerSeconds = 60 * 60 * 24;
 };
 
 class AsyncLogging
 {
 public:
-	AsyncLogging(std::string baseName,size_t rollSize,int32_t interval = 3);
+	AsyncLogging(std::string filePath, std::string baseName, size_t rollSize, int32_t interval = 3);
 	~AsyncLogging()
 	{
-		if(running)
+		if (running)
 		{
 			stop();
 		}
@@ -127,10 +137,10 @@ public:
 
 	void start()
 	{
-		std::thread t(std::bind(&AsyncLogging::threadFunc,this));
+		std::thread t(std::bind(&AsyncLogging::threadFunc, this));
 		t.detach();
 	}
-	void append(const char *loline,int32_t len);
+	void append(const char *loline, size_t len);
 
 private:
 	AsyncLogging(const AsyncLogging&);
@@ -141,6 +151,7 @@ private:
 	typedef FixedBuffer<kLargeBuffer> Buffer;
 	typedef std::vector<std::unique_ptr<Buffer>> BufferVector;
 	typedef std::unique_ptr<Buffer> BufferPtr;
+	std::string filePath;
 	std::string baseName;
 	const int32_t interval;
 	bool running;
@@ -154,13 +165,13 @@ private:
 
 class T
 {
- public:
+public:
 	T(const char *str)
-	: str(str),len(static_cast<int32_t>(strlen(str))) { }
+		: str(str), len(static_cast<int32_t>(strlen(str))) { }
 	T(const std::string& str)
-	:str(str.data()),len(static_cast<int32_t>(str.size())) { }
-	T(const char *str,unsigned len)
-	:str(str),len(len) {}
+		:str(str.data()), len(static_cast<int32_t>(str.size())) { }
+	T(const char *str, unsigned len)
+		:str(str), len(len) {}
 	const char *str;
 	const unsigned len;
 };
@@ -219,20 +230,19 @@ public:
 
 	self &operator<<(const std::string &v)
 	{
-		buffer.append(v.c_str(),v.size());
+		buffer.append(v.c_str(), v.size());
 		return *this;
 	}
 
-	self &operator<<(const StringPiece &v)
+	self &operator<<(const std::string_view &v)
 	{
-		buffer.append(v.data(),v.size());
+		buffer.append(v.data(), v.size());
 		return *this;
 	}
-
 
 	self &operator<<(const Buffer &v)
 	{
-		*this << v.toStringPiece();
+		*this << v.toStringView();
 		return *this;
 	}
 
@@ -242,7 +252,7 @@ public:
 		return *this;
 	}
 
-	void append(const char *data,int32_t len) { buffer.append(data,len); }
+	void append(const char *data, int32_t len) { buffer.append(data, len); }
 	const Buffer &getBuffer() const { return buffer; }
 	void resetBuffer() { buffer.reset(); }
 
@@ -263,7 +273,6 @@ public:
 		DEBUG,
 		INFO,
 		WARN,
-		ERROR,
 		FATAL,
 		NUM_LOG_LEVELS,
 	};
@@ -272,12 +281,12 @@ public:
 	{
 	public:
 		template<int32_t N>
-		inline SourceFile(const char (&arr)[N])
-		:data(arr),
-		 size(N-1)
+		inline SourceFile(const char(&arr)[N])
+			:data(arr),
+			size(N - 1)
 		{
-			const char *slash = strrchr(data,'/');
-			if(slash)
+			const char *slash = strrchr(data, '/');
+			if (slash)
 			{
 				data = slash + 1;
 				size -= static_cast<int32_t>(data - arr);
@@ -285,10 +294,10 @@ public:
 		}
 
 		explicit SourceFile(const char *fileName)
-		:data(fileName)
+			:data(fileName)
 		{
-			const char *slash = strrchr(fileName,'/');
-			if(slash)
+			const char *slash = strrchr(fileName, '/');
+			if (slash)
 			{
 				data = slash + 1;
 			}
@@ -298,10 +307,9 @@ public:
 		int32_t size;
 	};
 
-	Logger(SourceFile file,int32_t line);
-	Logger(SourceFile file,int32_t line,LogLevel level);
-	Logger(SourceFile file,int32_t line,LogLevel level,const char *func);
-	Logger(SourceFile file,int32_t line,bool toAbort);
+	Logger(SourceFile file, int32_t line);
+	Logger(SourceFile file, int32_t line, LogLevel level);
+	Logger(SourceFile file, int32_t line, LogLevel level, const char *func);
 	~Logger();
 
 	LogStream &stream() { return impl.stream; }
@@ -309,28 +317,30 @@ public:
 	static LogLevel logLevel();
 	static void setLogLevel(LogLevel level);
 
-	typedef void (*OutputFunc)(const char *msg,int32_t len);
-	typedef void (*FlushFunc)();
+	typedef void(*OutputFunc)(const char *msg, int32_t len);
+	typedef void(*FlushFunc)();
 
 	static void setOutput(OutputFunc);
 	static void setFlush(FlushFunc);
 
 private:
-	class xImpl
+	class Impl
 	{
 	public:
-		 typedef Logger::LogLevel LogLevel;
-		 xImpl(LogLevel level,int32_t oldErrno,const SourceFile &file,int32_t line);
-		 void formatTime();
-		 void finish();
+		typedef Logger::LogLevel LogLevel;
+		Impl(LogLevel level, int32_t oldErrno, const SourceFile &file, int32_t line);
+		void formatTime();
+		void finish();
 
-		 LogStream stream;
-		 LogLevel level;
-		 int32_t line;
-		 SourceFile baseName;
+		LogStream stream;
+		LogLevel level;
+		int32_t line;
+		SourceFile baseName;
+		TimeStamp time;
 	};
-	xImpl impl;
+	Impl impl;
 };
+
 
 extern Logger::LogLevel g_logLevel;
 inline Logger::LogLevel Logger::logLevel()
@@ -338,15 +348,13 @@ inline Logger::LogLevel Logger::logLevel()
 	return g_logLevel;
 }
 
-
 #define LOG_TRACE if (Logger::logLevel() <= Logger::TRACE) \
-  Logger(__FILE__, __LINE__, Logger::TRACE, __func__).stream()
+	Logger(__FILE__, __LINE__, Logger::TRACE, __func__).stream()
 #define LOG_DEBUG if (Logger::logLevel() <= Logger::DEBUG) \
-  Logger(__FILE__, __LINE__, Logger::DEBUG, __func__).stream()
+	Logger(__FILE__, __LINE__, Logger::DEBUG, __func__).stream()
 #define LOG_INFO if (Logger::logLevel() <= Logger::INFO) \
-  Logger(__FILE__, __LINE__).stream()
+	Logger(__FILE__, __LINE__).stream()
 #define LOG_WARN Logger(__FILE__, __LINE__, Logger::WARN).stream()
-#define LOG_ERROR Logger(__FILE__, __LINE__, Logger::ERROR).stream()
 #define LOG_FATAL Logger(__FILE__, __LINE__, Logger::FATAL).stream()
 #define LOG_SYSERR Logger(__FILE__, __LINE__, false).stream()
 #define LOG_SYSFATAL Logger(__FILE__, __LINE__, true).stream()

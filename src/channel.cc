@@ -5,15 +5,15 @@ const int32_t Channel::kNoneEvent = 0;
 const int32_t Channel::kReadEvent = POLLIN | POLLPRI;
 const int32_t Channel::kWriteEvent = POLLOUT;
 
-Channel::Channel(EventLoop *loop,int32_t fd)
-:loop(loop),
- fd(fd),
- events(0),
- revents(0),
- index(-1),
- tied(false),
- eventHandling(false),
- addedToLoop(false)
+Channel::Channel(EventLoop *loop, int32_t fd)
+	:loop(loop),
+	fd(fd),
+	events(0),
+	revents(0),
+	index(-1),
+	tied(false),
+	eventHandling(false),
+	addedToLoop(false)
 {
 
 }
@@ -22,6 +22,7 @@ Channel::~Channel()
 {
 	assert(!eventHandling);
 	assert(!addedToLoop);
+
 	if (loop->isInLoopThread())
 	{
 		assert(!loop->hasChannel(this));
@@ -44,50 +45,52 @@ void Channel::update()
 void Channel::handleEventWithGuard()
 {
 	eventHandling = true;
-#ifdef __linux__
-	if ((revents & EPOLLHUP) && !(revents & EPOLLIN))
-	{
-		if (closeCallback) closeCallback();
-	}
 
-	if (revents & EPOLLERR)
-	{
-		if (errorCallback) errorCallback();
-	}
-
-	if (revents & (EPOLLIN | EPOLLPRI | EPOLLRDHUP))
-	{
-		if (readCallback) readCallback();
-	}
-
-	if (revents & EPOLLOUT)
-	{
-		if (writeCallback) writeCallback();
-	}
-
-#endif
-
-#ifdef __APPLE__
 	if ((revents & POLLHUP) && !(revents & POLLIN))
 	{
-		if (closeCallback) closeCallback();
+		if (logHup)
+		{
+
+		}
+
+		if (closeCallback)
+		{
+			closeCallback();
+		}
 	}
 
-	if (revents & POLLERR)
+	if (revents & POLLNVAL)
 	{
-		if (errorCallback) errorCallback();
+
 	}
 
-	if (revents & (POLLIN | POLLPRI | POLLHUP))
+	if (revents & (POLLERR | POLLNVAL))
 	{
-		if (readCallback) readCallback();
+		if (errorCallback)
+		{
+			errorCallback();
+		}
+	}
+
+#ifndef POLLRDHUP
+	const int POLLRDHUP = 0;
+#endif
+
+	if (revents & (POLLIN | POLLPRI | POLLRDHUP))
+	{
+		if (readCallback)
+		{
+			readCallback();
+		}
 	}
 
 	if (revents & POLLOUT)
 	{
-		if (writeCallback) writeCallback();
+		if (writeCallback)
+		{
+			writeCallback();
+		}
 	}
-#endif
 	eventHandling = false;
 }
 

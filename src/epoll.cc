@@ -8,29 +8,26 @@ const int32_t kAdded = 1;
 const int32_t kDeleted = 2;
 
 Epoll::Epoll(EventLoop *loop)
-:events(64),
-loop(loop),
-epollFd(::epoll_create1(EPOLL_CLOEXEC))
+	:events(64),
+	loop(loop),
+	sockfd(::epoll_create1(EPOLL_CLOEXEC))
 {
-	if (epollFd < 0)
-	{
-		LOG_WARN<<"create epollFd Failed error " << epollFd <<strerror(errno);
-	}
+	assert(sockfd >= 0);
 }
 
 Epoll::~Epoll()
 {
-	::close(epollFd);
+	Socket::close(sockfd);
 }
 
-void Epoll::epollWait(ChannelList *activeChannels,int32_t msTime)
+void Epoll::epollWait(ChannelList *activeChannels, int32_t msTime)
 {
-	int32_t numEvents = ::epoll_wait(epollFd,&*events.begin(),events.size(),msTime);
+	int32_t numEvents = ::epoll_wait(sockfd, &*events.begin(), events.size(), msTime);
 	int32_t savedErrno = errno;
 
 	if (numEvents > 0)
 	{
-		fillActiveChannels(numEvents,activeChannels);
+		fillActiveChannels(numEvents, activeChannels);
 		if (numEvents == events.size())
 		{
 			events.resize(events.size() * 2);
@@ -44,8 +41,7 @@ void Epoll::epollWait(ChannelList *activeChannels,int32_t msTime)
 	{
 		if (savedErrno != EINTR)
 		{
-			errno = savedErrno;
-		  	LOG_WARN<<"wait error"<<errno;
+
 		}
 	}
 }
@@ -69,7 +65,7 @@ void Epoll::updateChannel(Channel *channel)
 			assert(channels.find(fd) == channels.end());
 			channels[fd] = channel;
 		}
-		else 
+		else
 		{
 			assert(channels.find(fd) != channels.end());
 			assert(channels[fd] == channel);
@@ -86,12 +82,12 @@ void Epoll::updateChannel(Channel *channel)
 		assert(index == kAdded);
 		if (channel->isNoneEvent())
 		{
-			update(EPOLL_CTL_DEL,channel);
+			update(EPOLL_CTL_DEL, channel);
 			channel->setIndex(kDeleted);
 		}
 		else
 		{
-			update(EPOLL_CTL_MOD,channel);
+			update(EPOLL_CTL_MOD, channel);
 		}
 	}
 }
@@ -111,26 +107,26 @@ void Epoll::removeChannel(Channel *channel)
 
 	if (index == kAdded)
 	{
-		update(EPOLL_CTL_DEL,channel);
+		update(EPOLL_CTL_DEL, channel);
 	}
-	
+
 	channel->setIndex(kNew);
 }
 
-void Epoll::update(int32_t operation,Channel *channel)
+void Epoll::update(int32_t operation, Channel *channel)
 {
 	struct epoll_event event;
 	bzero(&event, sizeof event);
 	event.events = channel->getEvents();
 	event.data.ptr = channel;
 	int32_t fd = channel->getfd();
-	if (::epoll_ctl(epollFd,operation,fd,&event) < 0)
+	if (::epoll_ctl(sockfd, operation, fd, &event) < 0)
 	{
-		LOG_ERROR<<"epoll_ctl "<<fd;
+		LOG_WARN << "epoll_ctl " << fd;
 	}
 }
 
-void Epoll::fillActiveChannels(int32_t numEvents,ChannelList *activeChannels) const
+void Epoll::fillActiveChannels(int32_t numEvents, ChannelList *activeChannels) const
 {
 	for (int32_t i = 0; i < numEvents; ++i)
 	{

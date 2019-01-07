@@ -1,33 +1,36 @@
 #pragma once
-#ifdef __APPLE__
+#ifdef _WIN64
 #include "all.h"
+#include "util.h"
 #include "log.h"
+#include "timerqueue.h"
 
 class Channel;
 class EventLoop;
-
-class Poll
+class Select
 {
 public:
-	typedef std::vector<pollfd> EventList;
 	typedef std::vector<Channel*> ChannelList;
 	typedef std::unordered_map<int32_t, Channel*> ChannelMap;
+	typedef std::vector<struct pollfd> EventList;
 
-	Poll(EventLoop *loop);
-	~Poll();
+	Select(EventLoop *loop);
+	~Select();
 
 	void epollWait(ChannelList *activeChannels, int32_t msTime = 100);
-	bool hasChannel(Channel *channel);
 	void updateChannel(Channel *channel);
 	void removeChannel(Channel *channel);
-	void fillActiveChannels(int32_t numEvents, ChannelList *activeChannels) const;
+	bool hasChannel(Channel *channel);
 
 private:
-	Poll(const Poll&);
-	void operator=(const Poll&);
+	void fillActiveChannels(int32_t numEvents, ChannelList *activeChannels) const;
 
 	ChannelMap channels;
 	EventList events;
 	EventLoop *loop;
+
+	fd_set rfds;
+	fd_set wfds;
+	fd_set efds;
 };
 #endif
